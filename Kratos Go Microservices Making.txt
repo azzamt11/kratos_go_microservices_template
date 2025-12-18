@@ -469,3 +469,124 @@ services:
 0.568 make: *** [Makefile:50: build] Error 1
 ```
 --modify your version to match your compiler version
+
+
+#Step 14: Error
+--On the build, you might got:
+```
+Error response from daemon: failed to create task for container: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "./server": stat ./server: no such file or directory: unknown
+```
+--Add this line to run the correct binary name between build and ports docker-compose.yml
+```
+    command: ["./kratos_go_microservices_template", "-conf", "/data/conf"] 
+```
+--Change this line in the Dockerfile:
+```
+RUN GOPROXY=https://goproxy.cn make build
+```
+--To this (bypass Makefile to ensure the name is 'server'):
+```
+RUN GOPROXY=https://goproxy.cn go build -o /src/bin/server ./cmd/kratos_go_microservices_template/main.go
+```
+
+
+#Step 15:
+--Use this docker-compose.yml to make it microservices:
+```
+services:
+  # --- User Microservice ---
+  user-service:
+    build:
+      context: .
+      dockerfile: app/user/Dockerfile
+    # Override: Run the 'user' binary specifically
+    command: ["./user", "-conf", "/data/conf"]
+    ports:
+      - "8000:8000" # HTTP
+      - "9000:9000" # gRPC
+    volumes:
+      - ./app/user/configs:/data/conf
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # --- Order Microservice ---
+  # order-service:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   # Override: Run the 'order' binary specifically
+  #   command: ["./order", "-conf", "/data/conf"]
+  #   ports:
+  #     - "8001:8000" # Maps Host 8001 to Order's HTTP 8000
+  #     - "9001:9000" # Maps Host 9001 to Order's gRPC 9000
+  #   volumes:
+  #     - ./app/order/configs:/data/conf
+  #   depends_on:
+  #     mysql:
+  #       condition: service_healthy
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: kratos_db
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 10s
+      retries: 5
+```
+--Change this line in the user service Dockerfile:
+```
+RUN GOPROXY=https://goproxy.cn make build
+```
+--into this line:
+```
+RUN go install github.com/google/wire/cmd/wire@latest
+RUN cd app/user/cmd/user && /go/bin/wire
+RUN GOPROXY=https://goproxy.cn go build -o /src/bin/server ./app/user/cmd/user/
+```
+--and this line:
+```
+COPY --from=builder /src/bin /app
+```
+--into this line:
+```
+COPY --from=builder /src/bin/server /app/server
+```
+--and make sure the last line in the user Dockerfile is:
+```
+CMD ["./server", "-conf", "/data/conf"]
+```
+--and make sure the http server in the config is:
+```
+http:
+    addr: 127.0.0.1:8000
+    timeout: 1s
+```
+
+
+#Step 16: Test
+--Create:
+```
+curl -X POST http://localhost:8000/user -H "Content-Type: application/json" -d "{\"name\": \"Gemini User\", \"email\": \"test@example.com\", \"age\": 25}"
+```
+--Get:
+```
+curl -X GET http://localhost:8000/user/1
+```
+--List Get:
+```
+curl -X GET http://localhost:8000/user
+```
+--Update:
+```
+curl -X PUT http://localhost:8000/user/1 -H "Content-Type: application/json" -d "{\"name\": \"Updated Name\", \"age\": 26}"
+```
+--Delete:
+```
+curl -X DELETE http://localhost:8000/user/1
+```
+

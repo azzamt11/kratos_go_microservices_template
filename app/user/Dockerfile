@@ -1,9 +1,12 @@
-FROM golang:1.19 AS builder
+FROM golang:1.25 AS builder
 
 COPY . /src
 WORKDIR /src
 
-RUN GOPROXY=https://goproxy.cn make build
+RUN go install github.com/google/wire/cmd/wire@latest
+RUN cd app/user/cmd/user && /go/bin/wire
+
+RUN GOPROXY=https://goproxy.cn go build -o /src/bin/server ./app/user/cmd/user/
 
 FROM debian:stable-slim
 
@@ -13,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         && rm -rf /var/lib/apt/lists/ \
         && apt-get autoremove -y && apt-get autoclean -y
 
-COPY --from=builder /src/bin /app
+COPY --from=builder /src/bin/server /app/server
 
 WORKDIR /app
 

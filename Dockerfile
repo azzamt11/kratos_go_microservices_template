@@ -3,7 +3,9 @@ FROM golang:1.25 AS builder
 COPY . /src
 WORKDIR /src
 
-RUN GOPROXY=https://goproxy.cn make build
+RUN go install github.com/google/wire/cmd/wire@latest
+
+RUN GOPROXY=https://goproxy.cn go build -o /src/bin/server ./cmd/kratos_go_microservices_template/main.go
 
 FROM debian:stable-slim
 
