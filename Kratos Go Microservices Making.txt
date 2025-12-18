@@ -1,0 +1,471 @@
+Kratos Go Microservices Making:
+==================================================================
+
+
+#Step 1: Making a main app directory
+kratos new kratos_go_microservices_template
+
+
+#Step 2: Go to dir and open Code
+cd kratos_go_microservices_template
+code .
+
+
+#Step 3: Make new service inside the main app directory, with no mod
+kratos new app/user --nomod 
+
+
+#Step 4: Make the proto file
+kratos proto add api/user/v1/user.proto
+--build the proto file just like in the example
+
+
+#Step 5: Build proto to api file
+kratos proto client api/helloworld/demo.proto
+--add this file to third_party/options
+```
+syntax = "proto3";
+
+package gorm;
+
+option go_package = "github.com/infobloxopen/protoc-gen-gorm/options;gorm";
+
+import "google/protobuf/descriptor.proto";
+
+// TODO: The option number 52119 lies within the internally reserved extension
+// range. I believe a publicly unique number should be requested.
+
+// Currently no file options
+extend google.protobuf.FileOptions {
+  GormFileOptions file_opts = 52119;
+}
+
+message GormFileOptions {
+}
+
+// Validation rules applied at the message level
+extend google.protobuf.MessageOptions {
+    // ormable will cause orm code to be generated for this message/object
+    GormMessageOptions opts = 52119;
+}
+
+message GormMessageOptions {
+  bool ormable = 1;
+  repeated ExtraField include = 2;
+  string table = 3;
+  bool multi_account = 4;
+  bool multi_compartment = 5;
+}
+
+message ExtraField {
+  string type = 1;
+  string name = 2;
+  GormTag tag = 3;
+  string package = 4;
+}
+
+// Field level specifications
+extend google.protobuf.FieldOptions {
+    GormFieldOptions field = 52119;
+}
+
+message GormFieldOptions {
+    GormTag tag = 1;
+    bool drop = 2;
+    oneof association {
+        HasOneOptions has_one = 3;
+        BelongsToOptions belongs_to = 4;
+        HasManyOptions has_many = 5;
+        ManyToManyOptions many_to_many = 6;
+    }
+    string reference_of = 7;
+}
+
+message GormTag {
+    string column = 1;
+    string type = 2;
+    int32 size = 3;
+    int32 precision = 4;
+    bool primary_key = 5;
+    bool unique = 6;
+    string default = 7;
+    bool not_null = 8;
+    bool auto_increment = 9;
+    string index = 10;
+    string unique_index = 11;
+    bool embedded = 12;
+    string embedded_prefix = 13;
+    bool ignore = 14;
+    string foreignkey = 15;
+    string association_foreignkey = 16;
+    string many_to_many = 17;
+    string jointable_foreignkey = 18;
+    string association_jointable_foreignkey = 19;
+    bool disable_association_autoupdate = 20;
+    bool disable_association_autocreate = 21;
+    bool association_save_reference = 22;
+    bool preload = 23;
+    string serializer = 24;
+}
+
+message HasOneOptions {
+    string foreignkey = 1;
+    GormTag foreignkey_tag = 2;
+    string association_foreignkey = 3;
+    bool disable_association_autoupdate = 4;
+    bool disable_association_autocreate = 5;
+    bool association_save_reference = 6;
+    bool preload = 7;
+    bool replace = 8;
+    bool append = 9;
+    bool clear = 10;
+}
+
+message BelongsToOptions {
+    string foreignkey = 1;
+    GormTag foreignkey_tag = 2;
+    string association_foreignkey = 3;
+    bool disable_association_autoupdate = 4;
+    bool disable_association_autocreate = 5;
+    bool association_save_reference = 6;
+    bool preload = 7;
+}
+
+message HasManyOptions {
+    string foreignkey = 1;
+    GormTag foreignkey_tag = 2;
+    string association_foreignkey = 3;
+    string position_field = 4;
+    GormTag position_field_tag = 5;
+    bool disable_association_autoupdate = 6;
+    bool disable_association_autocreate = 7;
+    bool association_save_reference = 8;
+    bool preload = 9;
+    bool replace = 10;
+    bool append = 11;
+    bool clear = 12;
+}
+
+message ManyToManyOptions {
+    string jointable = 1;
+    string foreignkey = 2;
+    string jointable_foreignkey = 3;
+    string association_foreignkey = 4;
+    string association_jointable_foreignkey = 5;
+    bool disable_association_autoupdate = 6;
+    bool disable_association_autocreate = 7;
+    bool association_save_reference = 8;
+    bool preload = 9;
+    bool replace = 10;
+    bool append = 11;
+    bool clear = 13;
+}
+
+
+// To be used in (leiu of) the interceptor
+extend google.protobuf.ServiceOptions {
+  AutoServerOptions server = 52119;
+}
+
+message AutoServerOptions {
+  bool autogen = 1;
+  bool txn_middleware = 2;
+  bool with_tracing = 3;
+}
+
+extend google.protobuf.MethodOptions {
+  MethodOptions method = 52119;
+}
+
+message MethodOptions {
+  string object_type = 1;
+}
+```
+--Install protoc here: https://github.com/protocolbuffers/protobuf/releases
+
+
+#Step 6: Build service from proto
+kratos proto server api/user/v1/user.proto -t internal/service 
+
+
+#Step 7: Ent
+go install entgo.io/ent/cmd/ent@latest
+ent new User
+--add this to the schema
+```
+package schema
+
+import (
+    "entgo.io/ent"
+    "entgo.io/ent/schema/field"
+)
+
+// Fields of the User.
+func (User) Fields() []ent.Field {
+    return []ent.Field{
+        field.Int("age").
+            Positive(),
+        field.String("name").
+            Default("unknown"),
+    }
+}
+```
+go generate ./ent
+ent generate ./ent/schema
+--update go mod and go sum
+
+
+#Step 8: Change the internal/data/data.go
+```
+package data
+
+import (
+    "context"
+    "kratos_go_microservices_template/ent" // Import your generated ent code
+    "kratos_go_microservices_template/internal/conf"
+
+    "github.com/go-kratos/kratos/v2/log"
+    "github.com/google/wire"
+
+    // Import the database driver
+    _ "github.com/go-sql-driver/mysql" 
+)
+
+// ProviderSet is data providers.
+var ProviderSet = wire.NewSet(NewData, NewGreeterRepo)
+
+// Data .
+type Data struct {
+    db *ent.Client // Add this field
+}
+
+// NewData .
+func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
+    helper := log.NewHelper(logger)
+
+    // 1. Initialize Ent Client
+    client, err := ent.Open(
+        c.Database.Driver,
+        c.Database.Source,
+    )
+    if err != nil {
+        helper.Errorf("failed opening connection to db: %v", err)
+        return nil, nil, err
+    }
+
+    // 2. Run the auto migration (optional but recommended during development)
+    if err := client.Schema.Create(context.Background()); err != nil {
+        helper.Errorf("failed creating schema resources: %v", err)
+        return nil, nil, err
+    }
+
+    d := &Data{
+        db: client,
+    }
+
+    // 3. Update cleanup to close the database connection
+    cleanup := func() {
+        helper.Info("closing the data resources")
+        if err := d.db.Close(); err != nil {
+            helper.Error(err)
+        }
+    }
+
+    return d, cleanup, nil
+}
+```
+--Update your go sum and go mod
+
+
+#Step 9: Syncronize with the cmd/wire_gen.go
+go generate ./...
+
+
+#Step 10: Refine the user.proto to make some functionals
+```
+syntax = "proto3";
+
+package api.user.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "kratos_go_microservices_template/api/user/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.user.v1";
+
+service User {
+    rpc CreateUser (CreateUserRequest) returns (CreateUserReply) {
+        option (google.api.http) = {
+            post: "/user",
+            body: "*"
+        };
+    }
+    rpc UpdateUser (UpdateUserRequest) returns (UpdateUserReply) {
+        option (google.api.http) = {
+            put: "/user/{id}",
+            body: "*"
+        };
+    }
+    rpc DeleteUser (DeleteUserRequest) returns (DeleteUserReply) {
+        option (google.api.http) = {
+            delete: "/user/{id}"
+        };
+    }
+    rpc GetUser (GetUserRequest) returns (GetUserReply) {
+        option (google.api.http) = {
+            get: "/user/{id}"
+        };
+    }
+    rpc ListUser (ListUserRequest) returns (ListUserReply) {
+        option (google.api.http) = {
+            get: "/user"
+        };
+    }
+}
+
+message CreateUserRequest {
+    string name = 1;
+    int32 age = 2;
+    string email = 3;
+}
+message CreateUserReply {
+    int64 id = 1;
+}
+
+message UpdateUserRequest {
+    int64 id = 1; // REQUIRED: Maps to {id} in the URL
+    string name = 2;
+    int32 age = 3;
+    string email = 4;
+}
+message UpdateUserReply {
+    int64 id = 1;
+}
+
+message DeleteUserRequest {
+    int64 id = 1;
+}
+message DeleteUserReply {
+    int64 id = 1;
+}
+
+message GetUserRequest {
+    int64 id = 1;
+}
+message GetUserReply {
+    int64 id = 1;
+    string name = 2;
+    string email = 3;
+    int32 age = 4;
+}
+
+message ListUserRequest {}
+message ListUserReply {
+    repeated GetUserReply results = 1; // Returns a list of users
+}
+```
+kratos proto client api/helloworld/demo.proto
+kratos proto server api/user/v1/user.proto -t internal/service 
+go generate ./...
+
+
+
+#Step 11: Run using docker
+--Change the database section in config.yaml to this:
+```
+data:
+  database:
+    driver: mysql
+    source: root:root@tcp(mysql:3306)/test?parseTime=True&loc=Local
+```
+--and run via docker-compose.yml:
+```
+services:
+  mysql:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: kratos_db
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+      - "9000:9000"
+    volumes:
+      - ./configs:/data/conf
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      - DB_SOURCE=root:root@tcp(mysql:3306)/kratos_db?parseTime=True
+```
+docker-compose up --build -d
+
+
+#Step 12: The minimum change you need to make the services build in a separate containers
+--on the Dockerfile on each services, after RUN GOPROXY=https://goproxy.cn:
+```
+go build -o /src/bin/server ./app/user/cmd/user/main.go
+```
+--The modified docker-compose.yml:
+```
+services:
+  user-service:
+    build:
+      context: .              # Key: Still use the root directory
+      dockerfile: app/user/Dockerfile
+    ports:
+      - "8000:8000"
+      - "9000:9000"
+    volumes:
+      - ./app/user/configs:/data/conf
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  order-service:
+    build:
+      context: .              # Key: Still use the root directory
+      dockerfile: app/order/Dockerfile
+    ports:
+      - "8001:8000"           # Different host port, same container port
+      - "9001:9000"
+    volumes:
+      - ./app/order/configs:/data/conf
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: kratos_db
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 5s
+      retries: 5
+```
+
+
+#Step 13: Error
+--On the build, you might got:
+```
+0.567 go: errors parsing go.mod:
+0.567 /src/go.mod:3: invalid go version '1.25.0': must match format 1.23
+0.568 make: *** [Makefile:50: build] Error 1
+```
+--modify your version to match your compiler version

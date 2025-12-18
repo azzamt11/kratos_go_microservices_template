@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package api.user.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "kratos_go_microservices_template/api/user/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.user.v1";
+
+service User {
+    rpc CreateUser (CreateUserRequest) returns (CreateUserReply) {
+        option (google.api.http) = {
+            post: "/user",
+            body: "*"
+        };
+    }
+    rpc UpdateUser (UpdateUserRequest) returns (UpdateUserReply) {
+        option (google.api.http) = {
+            put: "/user/{id}",
+            body: "*"
+        };
+    }
+    rpc DeleteUser (DeleteUserRequest) returns (DeleteUserReply) {
+        option (google.api.http) = {
+            delete: "/user/{id}"
+        };
+    }
+    rpc GetUser (GetUserRequest) returns (GetUserReply) {
+        option (google.api.http) = {
+            get: "/user/{id}"
+        };
+    }
+    rpc ListUser (ListUserRequest) returns (ListUserReply) {
+        option (google.api.http) = {
+            get: "/user"
+        };
+    }
+}
+
+message CreateUserRequest {
+    string name = 1;
+    int32 age = 2;
+    string email = 3;
+}
+message CreateUserReply {
+    int64 id = 1;
+}
+
+message UpdateUserRequest {
+    int64 id = 1; // REQUIRED: Maps to {id} in the URL
+    string name = 2;
+    int32 age = 3;
+    string email = 4;
+}
+message UpdateUserReply {
+    int64 id = 1;
+}
+
+message DeleteUserRequest {
+    int64 id = 1;
+}
+message DeleteUserReply {
+    int64 id = 1;
+}
+
+message GetUserRequest {
+    int64 id = 1;
+}
+message GetUserReply {
+    int64 id = 1;
+    string name = 2;
+    string email = 3;
+    int32 age = 4;
+}
+
+message ListUserRequest {}
+message ListUserReply {
+    repeated GetUserReply results = 1; // Returns a list of users
+}
